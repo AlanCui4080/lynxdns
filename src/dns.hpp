@@ -3,9 +3,9 @@
 #include <cstdint>
 
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
-#include <map>
 #include <vector>
 
 #include <spdlog/fmt/bin_to_hex.h>
@@ -103,29 +103,26 @@ namespace lynxdns
         std::unique_ptr<char[]> _message_in;
         size_t                  _message_length;
 
-        message_header                _header;
-        std::vector<message_question> _question_list;
+        message_header   _header;
+        message_question _question;
 
     public:
         dns_query(std::unique_ptr<char[]> msg_in, size_t msg_len);
         ~dns_query();
 
-        const std::vector<message_question>& get_question_list();
+        const message_question& get_question();
     };
 
     class dns_response
     {
     public:
-        dns_response(
-            const std::vector<message_question>&                   question_list,
-            std::multimap<std::string, resource_record>& cache_map);
+        dns_response(const message_question& question_list, std::multimap<std::string, resource_record>& cache_map);
         ~dns_response() = default;
     };
 
     template <typename Tpeer>
     class dns_server
     {
-        
     public:
         constexpr static auto DNS_UDP_MSG_LEN_RESTRICTION = 512;
         constexpr static auto is_authority                = false;
@@ -151,7 +148,7 @@ namespace lynxdns
 
             std::tie(recv_peer, recv_size, recv_buf) = _recv(std::move(recv_buf), DNS_UDP_MSG_LEN_RESTRICTION);
             dns_query    query(std::move(recv_buf), recv_size);
-            dns_response dns_response(query.get_question_list(), _cache_map);
+            dns_response dns_response(query.get_question(), _cache_map);
         }
         ~dns_server() = default;
     };

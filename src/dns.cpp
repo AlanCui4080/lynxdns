@@ -121,43 +121,45 @@ dns_query::dns_query(std::unique_ptr<char[]> msg_in, size_t msg_len)
     // QCLASS          a two octet code that specifies the class of the query.
     //                 For example, the QCLASS field is IN for the Internet.
 
-    for (size_t i = 0; i < _header.qd_count; i++)
+    if (_header.qd_count != 1)
     {
-        message_question question;
-        size_t           label_length;
-        do
-        {
-            label_length = _message_in[message_ptr];
-            if (label_length > 63)
-            {
-                // 4.1.4. Message compression
-
-                // well, there is no DNS server/client support multiple questions including Google and BIND9
-                // so even qd_count will not greater that 1, message copression is almost impossible to shown here
-                spdlog::error("dns_query: this question has message copression");
-                throw std::runtime_error("dns_query: message has copression");
-            }
-            question.qname.emplace_back(&_message_in[message_ptr + 1], label_length); // construct std::string in place
-
-            message_ptr += label_length + 1;
-        } while (label_length != 0);
-
-        // C11, 6.3.2
-        // A pointer to an object type may be converted to a pointer to a different object type.
-        // If the resulting pointer is not correctly aligned for the referenced type, the behavior is undefined.
-        question.qtype  = utility::ntoh<uint16_t>(_message_in[message_ptr + 1] << 8 | _message_in[message_ptr]);
-        question.qclass = utility::ntoh<uint16_t>(_message_in[message_ptr + 3] << 8 | _message_in[message_ptr + 2]);
-
-        spdlog::debug(
-            "dns_query: question {}: label: {}, qtype {}, qclass {}",
-            i,
-            question.qname,
-            question.qtype,
-            question.qclass);
-
-        _question_list.emplace_back(std::move(question));
-        message_ptr += 4;
+        spdlog::error("dns_query: this DNS query has multiple questions, which is not supported.");
+        throw std::runtime_error("dns_query: multiple questions not supported");
     }
+
+    // for (size_t i = 0; i < _header.qd_count; i++)
+    // {
+    message_question question;
+    size_t           label_length;
+    do
+    {
+        label_length = _message_in[message_ptr];
+        if (label_length > 63)
+        {
+            // 4.1.4. Message compression
+
+            // well, there is no DNS server/client support multiple questions including Google and BIND9
+            // so even qd_count will not greater that 1, message copression is almost impossible to shown here
+            spdlog::error("dns_query: this question has message copression");
+            throw std::runtime_error("dns_query: message has copression");
+        }
+        question.qname.emplace_back(&_message_in[message_ptr + 1], label_length); // construct std::string in place
+
+        message_ptr += label_length + 1;
+    } while (label_length != 0);
+
+    // C11, 6.3.2
+    // A pointer to an object type may be converted to a pointer to a different object type.
+    // If the resulting pointer is not correctly aligned for the referenced type, the behavior is undefined.
+    question.qtype  = utility::ntoh<uint16_t>(_message_in[message_ptr + 1] << 8 | _message_in[message_ptr]);
+    question.qclass = utility::ntoh<uint16_t>(_message_in[message_ptr + 3] << 8 | _message_in[message_ptr + 2]);
+
+    spdlog::debug(
+        "dns_query: question: label: {}, qtype {}, qclass {}", question.qname, question.qtype, question.qclass);
+
+    _question = std::move(question);
+    message_ptr += 4;
+    // }
 
     if (_header.an_count > 0)
     {
@@ -174,32 +176,24 @@ dns_query::dns_query(std::unique_ptr<char[]> msg_in, size_t msg_len)
         spdlog::warn("dns_query: this query has addition(s) in itself, ignored.");
     }
 
-    for (const auto& v : _question_list)
-    {
-        spdlog::info(
-            "dns_query: id {} question: {}, type: {}, class: {}",
-            _header.id,
-            static_cast<std::string>(v.qname),
-            v.qtype,
-            v.qclass);
-    }
+    spdlog::info(
+        "dns_query: id {} question: {}, type: {}, class: {}",
+        _header.id,
+        static_cast<std::string>(_question.qname),
+        _question.qtype,
+        _question.qclass);
 }
 
 dns_query::~dns_query()
 {
 }
 
-const std::vector<message_question>& dns_query::get_question_list()
+const message_question& dns_query::get_question()
 {
-    return _question_list;
+    return _question;
 }
 
-dns_response::dns_response(
-    const std::vector<message_question>&         question_list,
-    std::multimap<std::string, resource_record>& cache_map)
+dns_response::dns_response(const message_question& question, std::multimap<std::string, resource_record>& cache_map)
 {
-    for (const auto& v : question_list)
-    {
-        cache_map.find(static_cast<std::string>(v.qname));
-    }
+    cache_map.find(static_cast<std::string>(question.qname));
 }
